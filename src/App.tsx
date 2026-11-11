@@ -1,14 +1,18 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Historico from './pages/Historico'; // Importa a página nova
 
-export default function App() {
+function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/historico" element={<Historico />} /> {/* Cria a rota */}
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
+
+export default App;
