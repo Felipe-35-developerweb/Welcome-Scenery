@@ -1,16 +1,23 @@
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Historico from './pages/Historico'; // Importa a página nova
+
+// Lazy‑load das páginas para reduzir o bundle inicial
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Historico = lazy(() => import('./pages/Historico'));
+const Admin = lazy(() => import('./pages/Admin'));
 
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/historico" element={<Historico />} /> {/* Cria a rota */}
-      </Routes>
+      <Suspense fallback={<div className="flex h-screen items-center justify-center"><span>Carregando...</span></div>}>
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/historico" element={<Historico />} />
+          <Route path="/admin" element={<Admin />} />
+        </Routes>
+      </Suspense>
     </Router>
   );
 }
