@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { 
-  LogOut, Camera, Save, Loader2, 
-  Store, CheckCircle, History, Calendar as CalendarIcon, Sun, Moon, 
+import {
+  LogOut, Camera, Save, Loader2,
+  Store, CheckCircle, History, Calendar as CalendarIcon, Sun, Moon, Monitor,
   Megaphone, Clock, Truck, Home, MapPin
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +10,7 @@ import { auth, db, storage } from '../firebase';
 import { doc, setDoc, updateDoc, increment, onSnapshot, collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Tesseract from 'tesseract.js';
+import { useTheme } from '../hooks/useTheme';
 
 type StatusDia = 'trabalho' | 'folga' | 'ausencia';
 
@@ -20,44 +21,37 @@ interface DiaEscalaInfo {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  
+  const { themeMode, isDark, cycleTheme } = useTheme();
+
   const [utilizador, setUtilizador] = useState<User | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [turnoEncerrado, setTurnoEncerrado] = useState(false);
-  
-  // Inicia no modo escuro executivo (#171716) por padrão
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('ws_theme');
-    return saved ? saved === 'dark' : true;
-  });
   const [agora, setAgora] = useState(new Date());
 
-  // Dados do Admin
   const [avisoGeral, setAvisoGeral] = useState<{ mensagem: string; tipo: 'info' | 'alerta' | 'motivacao' } | null>(null);
   const [diasEscala, setDiasEscala] = useState<Record<string, DiaEscalaInfo>>({});
   const [diaSelecionadoInfo, setDiaSelecionadoInfo] = useState<number | null>(null);
   const [diasTrabalhadosMes, setDiasTrabalhadosMes] = useState<number[]>([]);
   const [resumoMes, setResumoMes] = useState({ liquido: 0, descontos: 0 });
 
-  // Estados de OCR e Ficheiros
   const [lendoInicio, setLendoInicio] = useState(false);
   const [lendoFim, setLendoFim] = useState(false);
   const [fotoInicio, setFotoInicio] = useState<File | null>(null);
   const [fotoFim, setFotoFim] = useState<File | null>(null);
 
-  // Campos do Turno
   const [pacotesPudo, setPacotesPudo] = useState(0);
   const [totalPedidos, setTotalPedidos] = useState<number | ''>('');
   const [totalConcluidos, setTotalConcluidos] = useState<number | ''>('');
   const [falhados, setFalhados] = useState<number | ''>('');
   const [fezRecolha, setFezRecolha] = useState(false);
 
-  // CÁLCULO EXATO: PUDOs são subtraídos do total concluído (0,15€ em vez de 0,70€ + 0,15€)
+  const ADMIN_EMAILS = ['welcomescenery@gmail.com', 'fllab.oficial@gmail.com'];
+
   const concluidosNum = Number(totalConcluidos) || 0;
   const pudosEfetivos = concluidosNum > 0 ? Math.min(pacotesPudo, concluidosNum) : pacotesPudo;
   const pacotesNormais = concluidosNum > 0 ? Math.max(0, concluidosNum - pudosEfetivos) : 0;
-  const ganhosDiarios = concluidosNum > 0 
+  const ganhosDiarios = concluidosNum > 0
     ? ((pacotesNormais * 0.70) + (pudosEfetivos * 0.15)).toFixed(2)
     : (pacotesPudo * 0.15).toFixed(2);
 
@@ -65,12 +59,6 @@ export default function Dashboard() {
     const timer = setInterval(() => setAgora(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
-
-  const alternarTema = () => {
-    const novoTema = !darkMode;
-    setDarkMode(novoTema);
-    localStorage.setItem('ws_theme', novoTema ? 'dark' : 'light');
-  };
 
   useEffect(() => {
     let pararObservadorBD: () => void;
@@ -80,7 +68,7 @@ export default function Dashboard() {
     const pararObservadorLogin = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUtilizador(user);
-        
+
         const docRef = doc(db, 'motoristas', user.uid);
         pararObservadorBD = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -108,7 +96,7 @@ export default function Dashboard() {
         const hoje = new Date();
         const chaveMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
         const escalaDocId = `${user.uid}_${chaveMes}`;
-        
+
         pararEscala = onSnapshot(doc(db, 'escalas_mensais', escalaDocId), (snap) => {
           if (snap.exists()) {
             const dadosBrutos = snap.data().dias || {};
@@ -149,7 +137,6 @@ export default function Dashboard() {
         } catch (err) {
           console.error(err);
         }
-
       } else {
         setCarregando(false);
         navigate('/');
@@ -163,6 +150,18 @@ export default function Dashboard() {
       if (pararEscala) pararEscala();
     };
   }, [navigate, turnoEncerrado]);
+
+  // LOGÓTIPO INTELIGENTE: volta sempre à página inicial do utilizador autenticado
+  const irParaHome = () => {
+    setTurnoEncerrado(false);
+    setDiaSelecionadoInfo(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (utilizador?.email && ADMIN_EMAILS.includes(utilizador.email.toLowerCase())) {
+      navigate('/admin');
+    } else {
+      navigate('/dashboard');
+    }
+  };
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -198,7 +197,7 @@ export default function Dashboard() {
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, margem, margem, img.width * escala, img.height * escala);
-        
+
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
@@ -248,7 +247,7 @@ export default function Dashboard() {
         if (utilizador) await updateDoc(doc(db, 'motoristas', utilizador.uid), { totalPedidos: encontrado });
       }
     } catch (error) {
-      console.error("Erro OCR Início:", error);
+      console.error('Erro OCR Início:', error);
     } finally {
       setLendoInicio(false);
     }
@@ -281,7 +280,7 @@ export default function Dashboard() {
         if (/falhados/i.test(linha)) {
           const linhaNormalizada = linha.replace(/\b[Oo]\b/g, '0');
           const matchFalh = linhaNormalizada.match(/falhados\s*[:\-]?\s*(\d{1,3})(?:\s*[>»71])?$/i);
-          
+
           if (matchFalh) {
             let valorF = Number(matchFalh[1]);
             if (matchFalh[1].startsWith('0') && matchFalh[1].length > 1) {
@@ -306,13 +305,13 @@ export default function Dashboard() {
       if (falh !== null) setFalhados(falh);
 
       if ((conc !== null || falh !== null) && utilizador) {
-        await updateDoc(doc(db, 'motoristas', utilizador.uid), { 
+        await updateDoc(doc(db, 'motoristas', utilizador.uid), {
           ...(conc !== null ? { totalConcluidos: conc } : {}),
           ...(falh !== null ? { falhados: falh } : {})
         });
       }
     } catch (error) {
-      console.error("Erro OCR Fim:", error);
+      console.error('Erro OCR Fim:', error);
     } finally {
       setLendoFim(false);
     }
@@ -321,13 +320,13 @@ export default function Dashboard() {
   const guardarRelatorio = async () => {
     if (!utilizador) return;
     if (totalPedidos === '' || totalConcluidos === '') {
-      alert("Preencha os pedidos totais e concluídos antes de encerrar o turno.");
+      alert('Preencha os pedidos totais e concluídos antes de encerrar o turno.');
       return;
     }
     setSalvando(true);
     try {
-      let urlInicio = "";
-      let urlFim = "";
+      let urlInicio = '';
+      let urlFim = '';
       if (fotoInicio) {
         const refInicio = ref(storage, `comprovativos/${utilizador.uid}/inicio_${Date.now()}`);
         await uploadBytes(refInicio, fotoInicio);
@@ -350,11 +349,11 @@ export default function Dashboard() {
         comprovativoInicio: urlInicio || null,
         comprovativoFim: urlFim || null,
       });
-      await setDoc(doc(db, 'motoristas', utilizador.uid), { 
+      await setDoc(doc(db, 'motoristas', utilizador.uid), {
         email: utilizador.email?.toLowerCase(),
-        pacotesPudo: 0, 
-        totalPedidos: '', 
-        totalConcluidos: '', 
+        pacotesPudo: 0,
+        totalPedidos: '',
+        totalConcluidos: '',
         falhados: '',
         fezRecolha: false
       }, { merge: true });
@@ -363,7 +362,7 @@ export default function Dashboard() {
       setTurnoEncerrado(true);
     } catch (error) {
       console.error(error);
-      alert("Erro ao guardar relatório.");
+      alert('Erro ao guardar relatório.');
     } finally {
       setSalvando(false);
     }
@@ -378,12 +377,11 @@ export default function Dashboard() {
 
   const escalaHoje = diasEscala[String(agora.getDate())];
 
-  // Paleta Oficial: #171716 (Preto), #B79148 (Dourado), #C3C2C2 (Prata)
-  const bgPage = darkMode ? 'bg-[#171716] text-white' : 'bg-[#f4f4f3] text-[#171716]';
-  const bgCard = darkMode ? 'bg-[#1f1f1e] border-[#2e2e2c]' : 'bg-white border-[#C3C2C2]/60';
-  const textMuted = darkMode ? 'text-[#C3C2C2]' : 'text-neutral-600';
-  const inputStyle = darkMode 
-    ? 'bg-[#171716] border-[#3a3a37] text-white focus:border-[#B79148]' 
+  const bgPage = isDark ? 'bg-[#171716] text-white' : 'bg-[#f4f4f3] text-[#171716]';
+  const bgCard = isDark ? 'bg-[#1f1f1e] border-[#2e2e2c]' : 'bg-white border-[#C3C2C2]/60';
+  const textMuted = isDark ? 'text-[#C3C2C2]' : 'text-neutral-600';
+  const inputStyle = isDark
+    ? 'bg-[#171716] border-[#3a3a37] text-white focus:border-[#B79148]'
     : 'bg-white border-[#C3C2C2] text-[#171716] focus:border-[#B79148]';
 
   if (carregando) {
@@ -406,7 +404,7 @@ export default function Dashboard() {
             <button onClick={() => navigate('/historico')} className="w-full bg-[#B79148] hover:bg-[#a37f3b] text-[#171716] py-3 rounded-xl font-black flex items-center justify-center gap-2 transition-colors">
               <History className="w-5 h-5" /> Ver Extrato e Resumo
             </button>
-            <button onClick={() => setTurnoEncerrado(false)} className={`w-full py-3 rounded-xl font-bold border ${darkMode ? 'border-[#3a3a37] hover:bg-[#2a2a28]' : 'border-[#C3C2C2] hover:bg-gray-100'}`}>
+            <button onClick={() => setTurnoEncerrado(false)} className={`w-full py-3 rounded-xl font-bold border ${isDark ? 'border-[#3a3a37] hover:bg-[#2a2a28]' : 'border-[#C3C2C2] hover:bg-gray-100'}`}>
               Iniciar Novo Turno
             </button>
           </div>
@@ -417,27 +415,51 @@ export default function Dashboard() {
 
   return (
     <div className={`min-h-screen pb-24 transition-colors duration-200 ${bgPage}`}>
-      {/* CABEÇALHO EXECUTIVO PRETO & DOURADO */}
+      {/* CABEÇALHO EXECUTIVO COM LOGÓTIPO INTELIGENTE */}
       <header className="bg-[#171716] border-b border-[#B79148]/40 shadow-lg sticky top-0 z-30">
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex justify-between items-center">
-          <div className="flex items-center gap-3 text-white">
-            <div className="bg-[#1f1f1e] border border-[#B79148] p-1.5 rounded-lg">
-              <Truck className="w-5 h-5 text-[#B79148]" />
+          <button
+            type="button"
+            onClick={irParaHome}
+            className="flex items-center gap-3 text-left text-white group focus:outline-none"
+            title="Voltar ao início"
+          >
+            <div className="bg-[#1f1f1e] border border-[#B79148] p-1.5 rounded-lg group-hover:bg-[#B79148] transition-colors">
+              <Truck className="w-5 h-5 text-[#B79148] group-hover:text-[#171716] transition-colors" />
             </div>
             <div>
-              <h1 className="text-base font-extrabold tracking-wide leading-none text-white">Welcome Scenery</h1>
+              <h1 className="text-base font-extrabold tracking-wide leading-none text-white group-hover:text-[#B79148] transition-colors">
+                Welcome Scenery
+              </h1>
               <span className="text-[11px] text-[#C3C2C2] flex items-center gap-1 mt-1">
-                <Clock className="w-3 h-3 text-[#B79148]" /> 
+                <Clock className="w-3 h-3 text-[#B79148]" />
                 {agora.toLocaleDateString('pt-PT')} • {agora.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
-          </div>
+          </button>
 
           <div className="flex items-center gap-2">
-            <button onClick={alternarTema} className="p-2 rounded-lg bg-[#1f1f1e] border border-[#2e2e2c] hover:border-[#B79148] text-white transition-colors" title="Alternar Tema">
-              {darkMode ? <Sun className="w-4 h-4 text-[#B79148]" /> : <Moon className="w-4 h-4 text-[#C3C2C2]" />}
+            <button
+              type="button"
+              onClick={cycleTheme}
+              className="px-2.5 py-2 rounded-lg bg-[#1f1f1e] border border-[#2e2e2c] hover:border-[#B79148] text-white transition-colors flex items-center gap-1.5 text-xs font-bold"
+              title="Alternar tema: Automático / Escuro / Claro"
+            >
+              {themeMode === 'auto' ? (
+                <Monitor className="w-4 h-4 text-[#B79148]" />
+              ) : themeMode === 'dark' ? (
+                <Moon className="w-4 h-4 text-[#B79148]" />
+              ) : (
+                <Sun className="w-4 h-4 text-[#B79148]" />
+              )}
+              <span className="hidden sm:inline capitalize">{themeMode}</span>
             </button>
-            <button onClick={handleLogout} className="p-2 rounded-lg bg-[#1f1f1e] border border-[#2e2e2c] hover:border-red-500 text-[#C3C2C2] hover:text-red-400 transition-colors" title="Sair">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="p-2 rounded-lg bg-[#1f1f1e] border border-[#2e2e2c] hover:border-red-500 text-[#C3C2C2] hover:text-red-400 transition-colors"
+              title="Sair"
+            >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
@@ -445,25 +467,23 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        
-        {/* ESCALA DE HOJE */}
         {escalaHoje && (
           <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${
-            escalaHoje.status === 'trabalho' 
+            escalaHoje.status === 'trabalho'
               ? 'bg-[#B79148]/15 border-[#B79148] text-current'
               : escalaHoje.status === 'folga'
-              ? (darkMode ? 'bg-amber-950/40 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900')
-              : (darkMode ? 'bg-red-950/40 border-red-800 text-red-200' : 'bg-red-50 border-red-300 text-red-900')
+              ? (isDark ? 'bg-amber-950/40 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900')
+              : (isDark ? 'bg-red-950/40 border-red-800 text-red-200' : 'bg-red-50 border-red-300 text-red-900')
           }`}>
             <div className="flex items-center gap-3">
               <MapPin className="w-5 h-5 shrink-0 text-[#B79148]" />
               <div>
                 <p className="text-[11px] font-bold uppercase opacity-75">Escala de Hoje ({agora.getDate()}/{agora.getMonth() + 1})</p>
                 <p className="text-sm font-bold">
-                  {escalaHoje.status === 'trabalho' 
-                    ? (escalaHoje.rota || 'Dia de Trabalho Escalado') 
-                    : escalaHoje.status === 'folga' 
-                    ? 'Dia de Folga' 
+                  {escalaHoje.status === 'trabalho'
+                    ? (escalaHoje.rota || 'Dia de Trabalho Escalado')
+                    : escalaHoje.status === 'folga'
+                    ? 'Dia de Folga'
                     : 'Ausência Registada'}
                 </p>
               </div>
@@ -471,14 +491,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* QUADRO DE AVISOS */}
         {avisoGeral && (
           <div className={`p-4 rounded-xl border flex items-start gap-3 shadow-sm ${
-            avisoGeral.tipo === 'alerta' 
-              ? (darkMode ? 'bg-red-950/60 border-red-800 text-red-200' : 'bg-red-50 border-red-200 text-red-800')
+            avisoGeral.tipo === 'alerta'
+              ? (isDark ? 'bg-red-950/60 border-red-800 text-red-200' : 'bg-red-50 border-red-200 text-red-800')
               : avisoGeral.tipo === 'motivacao'
-              ? (darkMode ? 'bg-[#1f1f1e] border-[#B79148]/60 text-white' : 'bg-amber-50/60 border-[#B79148] text-[#171716]')
-              : (darkMode ? 'bg-[#1f1f1e] border-[#C3C2C2]/40 text-[#C3C2C2]' : 'bg-gray-100 border-gray-300 text-gray-800')
+              ? (isDark ? 'bg-[#1f1f1e] border-[#B79148]/60 text-white' : 'bg-amber-50/60 border-[#B79148] text-[#171716]')
+              : (isDark ? 'bg-[#1f1f1e] border-[#C3C2C2]/40 text-[#C3C2C2]' : 'bg-gray-100 border-gray-300 text-gray-800')
           }`}>
             <Megaphone className="w-5 h-5 shrink-0 mt-0.5 text-[#B79148]" />
             <div>
@@ -488,7 +507,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* RESUMO FINANCEIRO */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className={`p-4 rounded-xl border shadow-sm ${bgCard}`}>
             <p className={`text-xs font-medium ${textMuted}`}>Ganhos Hoje</p>
@@ -519,7 +537,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* BOTÃO RÁPIDO PUDO */}
         <div className={`p-4 rounded-xl border shadow-sm flex items-center justify-between gap-3 ${bgCard}`}>
           <div>
             <h3 className="font-bold text-sm">Entregas em Ponto PUDO (0,15€)</h3>
@@ -527,15 +544,15 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             {pacotesPudo > 0 && (
-              <button 
+              <button
                 onClick={removerPudo}
-                className={`px-3 py-3 rounded-xl border font-bold text-sm transition-colors ${darkMode ? 'border-[#3a3a37] hover:bg-[#2a2a28] text-[#C3C2C2]' : 'border-[#C3C2C2] hover:bg-gray-100 text-[#171716]'}`}
+                className={`px-3 py-3 rounded-xl border font-bold text-sm transition-colors ${isDark ? 'border-[#3a3a37] hover:bg-[#2a2a28] text-[#C3C2C2]' : 'border-[#C3C2C2] hover:bg-gray-100 text-[#171716]'}`}
                 title="Remover 1 PUDO"
               >
                 -1
               </button>
             )}
-            <button 
+            <button
               onClick={registarPudo}
               className="bg-[#B79148] hover:bg-[#a37f3b] active:scale-95 text-[#171716] px-4 py-3 rounded-xl shadow-md font-black text-sm flex items-center gap-2 transition-all"
             >
@@ -544,17 +561,16 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* FORMULÁRIO DE PRINTS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className={`rounded-xl border shadow-sm overflow-hidden ${bgCard}`}>
-            <div className={`px-5 py-3.5 border-b font-bold text-sm ${darkMode ? 'bg-[#171716]/60 border-[#2e2e2c]' : 'bg-gray-50 border-gray-200'}`}>
+            <div className={`px-5 py-3.5 border-b font-bold text-sm ${isDark ? 'bg-[#171716]/60 border-[#2e2e2c]' : 'bg-gray-50 border-gray-200'}`}>
               1. Saída do Armazém
             </div>
             <div className="p-5 space-y-4">
               <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-                fotoInicio 
-                  ? 'border-[#B79148] bg-[#B79148]/10' 
-                  : (darkMode ? 'border-[#3a3a37] hover:border-[#B79148]' : 'border-[#C3C2C2] hover:border-[#B79148]')
+                fotoInicio
+                  ? 'border-[#B79148] bg-[#B79148]/10'
+                  : (isDark ? 'border-[#3a3a37] hover:border-[#B79148]' : 'border-[#C3C2C2] hover:border-[#B79148]')
               }`}>
                 {lendoInicio ? (
                   <div className="flex flex-col items-center">
@@ -577,26 +593,26 @@ export default function Dashboard() {
 
               <div>
                 <label className={`block text-xs font-bold uppercase mb-1 ${textMuted}`}>Todos os Pedidos</label>
-                <input 
-                  type="number" 
-                  value={totalPedidos} 
+                <input
+                  type="number"
+                  value={totalPedidos}
                   onChange={(e) => setTotalPedidos(e.target.value ? Number(e.target.value) : '')}
                   placeholder="Ex: 75"
-                  className={`w-full rounded-lg border px-3 py-2.5 text-sm font-bold ${inputStyle}`} 
+                  className={`w-full rounded-lg border px-3 py-2.5 text-sm font-bold ${inputStyle}`}
                 />
               </div>
             </div>
           </div>
 
           <div className={`rounded-xl border shadow-sm overflow-hidden ${bgCard}`}>
-            <div className={`px-5 py-3.5 border-b font-bold text-sm ${darkMode ? 'bg-[#171716]/60 border-[#2e2e2c]' : 'bg-gray-50 border-gray-200'}`}>
+            <div className={`px-5 py-3.5 border-b font-bold text-sm ${isDark ? 'bg-[#171716]/60 border-[#2e2e2c]' : 'bg-gray-50 border-gray-200'}`}>
               2. Fim do Turno
             </div>
             <div className="p-5 space-y-4">
               <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-                fotoFim 
-                  ? 'border-[#B79148] bg-[#B79148]/10' 
-                  : (darkMode ? 'border-[#3a3a37] hover:border-[#B79148]' : 'border-[#C3C2C2] hover:border-[#B79148]')
+                fotoFim
+                  ? 'border-[#B79148] bg-[#B79148]/10'
+                  : (isDark ? 'border-[#3a3a37] hover:border-[#B79148]' : 'border-[#C3C2C2] hover:border-[#B79148]')
               }`}>
                 {lendoFim ? (
                   <div className="flex flex-col items-center">
@@ -620,29 +636,29 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={`block text-xs font-bold uppercase mb-1 ${textMuted}`}>Concluídos</label>
-                  <input 
-                    type="number" 
-                    value={totalConcluidos} 
+                  <input
+                    type="number"
+                    value={totalConcluidos}
                     onChange={(e) => setTotalConcluidos(e.target.value ? Number(e.target.value) : '')}
                     placeholder="Ex: 75"
-                    className={`w-full rounded-lg border px-3 py-2.5 text-sm font-bold ${inputStyle}`} 
+                    className={`w-full rounded-lg border px-3 py-2.5 text-sm font-bold ${inputStyle}`}
                   />
                 </div>
                 <div>
                   <label className={`block text-xs font-bold uppercase mb-1 ${textMuted}`}>Falhados</label>
-                  <input 
-                    type="number" 
-                    value={falhados} 
+                  <input
+                    type="number"
+                    value={falhados}
                     onChange={(e) => setFalhados(e.target.value ? Number(e.target.value) : '')}
                     placeholder="Ex: 0"
-                    className={`w-full rounded-lg border px-3 py-2.5 text-sm font-bold ${inputStyle}`} 
+                    className={`w-full rounded-lg border px-3 py-2.5 text-sm font-bold ${inputStyle}`}
                   />
                 </div>
               </div>
 
-              <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer ${darkMode ? 'border-[#2e2e2c] bg-[#171716]/50' : 'border-gray-200 bg-gray-50'}`}>
-                <input 
-                  type="checkbox" 
+              <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer ${isDark ? 'border-[#2e2e2c] bg-[#171716]/50' : 'border-gray-200 bg-gray-50'}`}>
+                <input
+                  type="checkbox"
                   checked={fezRecolha}
                   onChange={(e) => setFezRecolha(e.target.checked)}
                   className="w-4 h-4 accent-[#B79148] rounded"
@@ -653,8 +669,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <button 
-          onClick={guardarRelatorio} 
+        <button
+          onClick={guardarRelatorio}
           disabled={salvando}
           className="w-full bg-[#B79148] hover:bg-[#a37f3b] disabled:opacity-50 text-[#171716] py-4 rounded-xl shadow-lg font-black text-base flex items-center justify-center gap-2 transition-all"
         >
@@ -662,12 +678,11 @@ export default function Dashboard() {
           {salvando ? 'A Guardar Turno...' : 'Encerrar e Enviar Relatório do Dia'}
         </button>
 
-        {/* CALENDÁRIO DE ESCALA MENSAL INDIVIDUALIZADA */}
         <div className={`p-5 rounded-xl border shadow-sm ${bgCard}`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-[#2e2e2c]/30">
             <div>
               <h3 className="font-bold text-sm flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-[#B79148]" /> 
+                <CalendarIcon className="w-4 h-4 text-[#B79148]" />
                 A Minha Escala ({agora.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })})
               </h3>
               <p className={`text-[11px] mt-0.5 ${textMuted}`}>Toque num dia para ver a rota detalhada</p>
@@ -682,10 +697,10 @@ export default function Dashboard() {
           </div>
 
           {diaSelecionadoInfo !== null && (
-            <div className={`mb-4 p-3 rounded-lg border text-xs flex justify-between items-center ${darkMode ? 'bg-[#171716] border-[#B79148]/50' : 'bg-amber-50/70 border-[#B79148]'}`}>
+            <div className={`mb-4 p-3 rounded-lg border text-xs flex justify-between items-center ${isDark ? 'bg-[#171716] border-[#B79148]/50' : 'bg-amber-50/70 border-[#B79148]'}`}>
               <div>
                 <span className="font-bold text-[#B79148]">Dia {diaSelecionadoInfo}: </span>
-                {diasEscala[String(diaSelecionadoInfo)]?.status === 'trabalho' 
+                {diasEscala[String(diaSelecionadoInfo)]?.status === 'trabalho'
                   ? (diasEscala[String(diaSelecionadoInfo)]?.rota || 'Turno de Trabalho Escalado')
                   : diasEscala[String(diaSelecionadoInfo)]?.status === 'folga'
                   ? 'Dia de Folga'
@@ -696,7 +711,7 @@ export default function Dashboard() {
               <button onClick={() => setDiaSelecionadoInfo(null)} className="text-[#B79148] font-bold ml-2">Fechar</button>
             </div>
           )}
-          
+
           <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold mb-2 opacity-60">
             <div>D</div><div>S</div><div>T</div><div>Q</div><div>Q</div><div>S</div><div>S</div>
           </div>
@@ -708,7 +723,7 @@ export default function Dashboard() {
               const statusEscala = info?.status;
               const ehHoje = dia === agora.getDate();
 
-              let estiloDia = darkMode ? 'bg-[#171716] text-[#C3C2C2]' : 'bg-gray-100 text-gray-600';
+              let estiloDia = isDark ? 'bg-[#171716] text-[#C3C2C2]' : 'bg-gray-100 text-gray-600';
               let subTexto = '';
 
               if (jaFechouTurno) {
@@ -726,7 +741,7 @@ export default function Dashboard() {
               }
 
               return (
-                <button 
+                <button
                   key={dia}
                   type="button"
                   onClick={() => setDiaSelecionadoInfo(dia)}
@@ -740,20 +755,18 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* RODAPÉ F&L LAB */}
         <footer className="pt-4 text-center">
           <div className={`inline-flex items-center justify-center gap-2 px-4 py-1.5 rounded-full border ${bgCard}`}>
             <img src="/FL-Lab-Avatar.png" alt="F&L Lab" className="w-4 h-4 rounded object-contain" />
             <span className={`text-[11px] font-medium ${textMuted}`}>
-              Produzido por <strong className={darkMode ? 'text-white' : 'text-[#171716]'}>F&L Lab</strong>
+              Produzido por <strong className={isDark ? 'text-white' : 'text-[#171716]'}>F&L Lab</strong>
             </span>
           </div>
         </footer>
       </main>
 
-      {/* BARRA DE NAVEGAÇÃO MOBILE INFERIOR */}
-      <nav className={`fixed bottom-0 inset-x-0 border-t z-40 flex justify-around py-2.5 ${darkMode ? 'bg-[#171716] border-[#2e2e2c]' : 'bg-white border-gray-200'}`}>
-        <button className="flex flex-col items-center text-[#B79148] font-bold text-[11px] gap-1">
+      <nav className={`fixed bottom-0 inset-x-0 border-t z-40 flex justify-around py-2.5 ${isDark ? 'bg-[#171716] border-[#2e2e2c]' : 'bg-white border-gray-200'}`}>
+        <button onClick={irParaHome} className="flex flex-col items-center text-[#B79148] font-bold text-[11px] gap-1">
           <Home className="w-5 h-5" /> Turno Atual
         </button>
         <button onClick={() => navigate('/historico')} className={`flex flex-col items-center font-medium text-[11px] gap-1 ${textMuted} hover:text-[#B79148]`}>

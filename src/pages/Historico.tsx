@@ -3,7 +3,11 @@ import { collection, query, orderBy, getDocs, doc, getDoc } from 'firebase/fires
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Package, Image as ImageIcon, Loader2, AlertCircle, Receipt, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  ArrowLeft, Calendar, Package, Image as ImageIcon, Loader2,
+  AlertCircle, Receipt, ChevronLeft, ChevronRight, Truck, Sun, Moon, Monitor
+} from 'lucide-react';
+import { useTheme } from '../hooks/useTheme';
 
 interface Turno {
   id: string;
@@ -22,14 +26,19 @@ interface Turno {
 
 export default function Historico() {
   const navigate = useNavigate();
+  const { themeMode, isDark, cycleTheme } = useTheme();
+  const [utilizador, setUtilizador] = useState<User | null>(null);
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [perfil, setPerfil] = useState<{ nome?: string; codigoFrota?: string; email?: string }>({});
   const [carregando, setCarregando] = useState(true);
   const [mesSelecionado, setMesSelecionado] = useState(new Date());
 
+  const ADMIN_EMAILS = ['welcomescenery@gmail.com', 'fllab.oficial@gmail.com'];
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
+        setUtilizador(user);
         try {
           const perfilSnap = await getDoc(doc(db, 'motoristas', user.uid));
           if (perfilSnap.exists()) {
@@ -42,16 +51,16 @@ export default function Historico() {
             collection(db, 'motoristas', user.uid, 'turnos'),
             orderBy('data', 'desc')
           );
-          
+
           const querySnapshot = await getDocs(q);
           const turnosCarregados = querySnapshot.docs.map(d => ({
             id: d.id,
             ...d.data()
           })) as Turno[];
-          
+
           setTurnos(turnosCarregados);
         } catch (error) {
-          console.error("Erro ao carregar histórico:", error);
+          console.error('Erro ao carregar histórico:', error);
         } finally {
           setCarregando(false);
         }
@@ -63,15 +72,27 @@ export default function Historico() {
     return () => unsubscribe();
   }, [navigate]);
 
+  const irParaHome = () => {
+    if (utilizador?.email && ADMIN_EMAILS.includes(utilizador.email.toLowerCase())) {
+      navigate('/admin');
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
   const mudarMes = (direcao: number) => {
     setMesSelecionado(prev => new Date(prev.getFullYear(), prev.getMonth() + direcao, 1));
   };
 
+  const bgPage = isDark ? 'bg-[#171716] text-white' : 'bg-[#f4f4f3] text-[#171716]';
+  const bgCard = isDark ? 'bg-[#1f1f1e] border-[#2e2e2c]' : 'bg-white border-[#C3C2C2]/60';
+  const textMuted = isDark ? 'text-[#C3C2C2]' : 'text-neutral-600';
+
   if (carregando) {
     return (
-      <div className="min-h-screen bg-[#171716] flex flex-col items-center justify-center">
+      <div className={`min-h-screen flex flex-col items-center justify-center ${bgPage}`}>
         <Loader2 className="w-10 h-10 text-[#B79148] animate-spin mb-4" />
-        <p className="text-[#C3C2C2] font-medium">A carregar extrato de serviços...</p>
+        <p className={`font-medium ${textMuted}`}>A carregar extrato de serviços...</p>
       </div>
     );
   }
@@ -98,37 +119,67 @@ export default function Historico() {
   const totalAReceber = brutoMes - descontosMes;
 
   return (
-    <div className="min-h-screen bg-[#171716] text-white pb-12">
-      <header className="bg-[#171716] border-b border-[#B79148]/40 shadow-md">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-lg font-extrabold text-white">Welcome Scenery • Extrato</h1>
-          <button 
-            onClick={() => navigate('/dashboard')}
-            className="text-[#C3C2C2] hover:text-[#B79148] transition-colors flex items-center gap-2 text-sm font-bold"
+    <div className={`min-h-screen pb-12 transition-colors duration-200 ${bgPage}`}>
+      <header className="bg-[#171716] border-b border-[#B79148]/40 shadow-md sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto px-4 py-3.5 flex justify-between items-center">
+          <button
+            type="button"
+            onClick={irParaHome}
+            className="flex items-center gap-3 text-left text-white group focus:outline-none"
+            title="Voltar ao painel principal"
           >
-            <ArrowLeft className="w-4 h-4" /> Voltar
+            <div className="bg-[#1f1f1e] border border-[#B79148] p-1.5 rounded-lg group-hover:bg-[#B79148] transition-colors">
+              <Truck className="w-5 h-5 text-[#B79148] group-hover:text-[#171716] transition-colors" />
+            </div>
+            <div>
+              <h1 className="text-base font-extrabold text-white group-hover:text-[#B79148] transition-colors leading-none">
+                Welcome Scenery
+              </h1>
+              <span className="text-[11px] text-[#C3C2C2]">Extrato Mensal</span>
+            </div>
           </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={cycleTheme}
+              className="px-2.5 py-2 rounded-lg bg-[#1f1f1e] border border-[#2e2e2c] hover:border-[#B79148] text-white transition-colors flex items-center gap-1.5 text-xs font-bold"
+              title="Alternar tema: Automático / Escuro / Claro"
+            >
+              {themeMode === 'auto' ? (
+                <Monitor className="w-4 h-4 text-[#B79148]" />
+              ) : themeMode === 'dark' ? (
+                <Moon className="w-4 h-4 text-[#B79148]" />
+              ) : (
+                <Sun className="w-4 h-4 text-[#B79148]" />
+              )}
+              <span className="hidden sm:inline capitalize">{themeMode}</span>
+            </button>
+            <button
+              onClick={irParaHome}
+              className="text-[#C3C2C2] hover:text-[#B79148] transition-colors flex items-center gap-1.5 text-xs font-bold px-2.5 py-2 rounded-lg bg-[#1f1f1e] border border-[#2e2e2c]"
+            >
+              <ArrowLeft className="w-4 h-4" /> Voltar
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        
-        {/* NAVEGADOR DE MÊS */}
-        <div className="bg-[#1f1f1e] rounded-xl border border-[#2e2e2c] p-4 flex items-center justify-between">
-          <button onClick={() => mudarMes(-1)} className="p-2 rounded-lg border border-[#3a3a37] hover:border-[#B79148] text-white">
+        <div className={`rounded-xl border p-4 flex items-center justify-between ${bgCard}`}>
+          <button onClick={() => mudarMes(-1)} className={`p-2 rounded-lg border hover:border-[#B79148] ${isDark ? 'border-[#3a3a37]' : 'border-[#C3C2C2]'}`}>
             <ChevronLeft className="w-4 h-4" />
           </button>
           <div className="text-center">
-            <p className="text-[11px] text-[#C3C2C2] uppercase font-bold">Mês de Referência</p>
-            <h2 className="text-lg font-black text-white capitalize">{nomeMes}</h2>
+            <p className={`text-[11px] uppercase font-bold ${textMuted}`}>Mês de Referência</p>
+            <h2 className="text-lg font-black capitalize">{nomeMes}</h2>
           </div>
-          <button onClick={() => mudarMes(1)} className="p-2 rounded-lg border border-[#3a3a37] hover:border-[#B79148] text-white">
+          <button onClick={() => mudarMes(1)} className={`p-2 rounded-lg border hover:border-[#B79148] ${isDark ? 'border-[#3a3a37]' : 'border-[#C3C2C2]'}`}>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* RESUMO MENSAL DE ATIVIDADE E PAGAMENTO */}
-        <div className="bg-[#1f1f1e] rounded-xl border border-[#B79148]/50 overflow-hidden shadow-xl">
+        <div className={`rounded-xl border border-[#B79148]/50 overflow-hidden shadow-xl ${bgCard}`}>
           <div className="bg-[#171716] px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#2e2e2c]">
             <div className="flex items-center gap-2.5">
               <Receipt className="w-5 h-5 text-[#B79148]" />
@@ -144,30 +195,30 @@ export default function Historico() {
             </span>
           </div>
 
-          <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 border-b border-[#2e2e2c]">
+          <div className={`p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 border-b ${isDark ? 'border-[#2e2e2c]' : 'border-gray-200'}`}>
             <div>
-              <p className="text-[11px] font-bold text-[#C3C2C2] uppercase">Dias Trabalhados</p>
-              <p className="text-xl font-black text-white mt-0.5">{diasTrabalhados}</p>
+              <p className={`text-[11px] font-bold uppercase ${textMuted}`}>Dias Trabalhados</p>
+              <p className="text-xl font-black mt-0.5">{diasTrabalhados}</p>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#C3C2C2] uppercase">Total Entregas</p>
-              <p className="text-xl font-black text-white mt-0.5">{totalEntregas}</p>
+              <p className={`text-[11px] font-bold uppercase ${textMuted}`}>Total Entregas</p>
+              <p className="text-xl font-black mt-0.5">{totalEntregas}</p>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#C3C2C2] uppercase">Média / Dia</p>
+              <p className={`text-[11px] font-bold uppercase ${textMuted}`}>Média / Dia</p>
               <p className="text-xl font-black text-[#B79148] mt-0.5">{mediaEntregasDia}</p>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#C3C2C2] uppercase">EDR do Mês</p>
-              <p className="text-xl font-black text-white mt-0.5">{edrPercentual}%</p>
+              <p className={`text-[11px] font-bold uppercase ${textMuted}`}>EDR do Mês</p>
+              <p className="text-xl font-black mt-0.5">{edrPercentual}%</p>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#C3C2C2] uppercase">PUDOs (€)</p>
-              <p className="text-xl font-black text-white mt-0.5">{totalPudosEuros.toFixed(2)} €</p>
+              <p className={`text-[11px] font-bold uppercase ${textMuted}`}>PUDOs (€)</p>
+              <p className="text-xl font-black mt-0.5">{totalPudosEuros.toFixed(2)} €</p>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#C3C2C2] uppercase">Penalizações</p>
-              <p className={`text-xl font-black mt-0.5 ${descontosMes > 0 ? 'text-red-500' : 'text-white'}`}>
+              <p className={`text-[11px] font-bold uppercase ${textMuted}`}>Penalizações</p>
+              <p className={`text-xl font-black mt-0.5 ${descontosMes > 0 ? 'text-red-500' : ''}`}>
                 {descontosMes > 0 ? `-${descontosMes.toFixed(2)}` : '0.00'} €
               </p>
             </div>
@@ -176,20 +227,19 @@ export default function Historico() {
           <div className="bg-[#B79148]/15 px-6 py-4 flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-[#B79148] uppercase">Total Líquido a Receber</p>
-              <p className="text-[11px] text-[#C3C2C2]">Valor estimado para emissão de recibo</p>
+              <p className={`text-[11px] ${textMuted}`}>Valor estimado para emissão de recibo</p>
             </div>
             <p className="text-3xl font-black text-[#B79148]">{totalAReceber.toFixed(2)} €</p>
           </div>
         </div>
 
-        {/* DETALHAMENTO DIÁRIO */}
         <div>
-          <h3 className="text-base font-bold text-white mb-3">Detalhe Diário ({turnosDoMes.length} registos)</h3>
+          <h3 className="text-base font-bold mb-3">Detalhe Diário ({turnosDoMes.length} registos)</h3>
 
           {turnosDoMes.length === 0 ? (
-            <div className="bg-[#1f1f1e] rounded-xl p-8 text-center border border-[#2e2e2c]">
-              <Calendar className="w-12 h-12 text-[#3a3a37] mx-auto mb-3" />
-              <p className="text-sm font-medium text-[#C3C2C2]">Sem turnos registados neste mês.</p>
+            <div className={`rounded-xl p-8 text-center border ${bgCard}`}>
+              <Calendar className="w-12 h-12 text-[#B79148]/50 mx-auto mb-3" />
+              <p className={`text-sm font-medium ${textMuted}`}>Sem turnos registados neste mês.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -198,30 +248,30 @@ export default function Historico() {
                 const edrDia = turno.totalPedidos > 0 ? (((turno.falhados || 0) / turno.totalPedidos) * 100).toFixed(2) : '0.00';
 
                 return (
-                  <div key={turno.id} className={`bg-[#1f1f1e] rounded-xl border overflow-hidden ${turno.penalizacao ? 'border-red-800' : 'border-[#2e2e2c]'}`}>
-                    <div className={`px-5 py-3 border-b flex justify-between items-center ${turno.penalizacao ? 'bg-red-950/40 border-red-800' : 'bg-[#171716]/60 border-[#2e2e2c]'}`}>
-                      <div className="flex items-center gap-2 text-white font-bold text-sm">
+                  <div key={turno.id} className={`rounded-xl border overflow-hidden ${bgCard} ${turno.penalizacao ? 'border-red-800' : ''}`}>
+                    <div className={`px-5 py-3 border-b flex justify-between items-center ${turno.penalizacao ? 'bg-red-950/30 border-red-800' : (isDark ? 'bg-[#171716]/60 border-[#2e2e2c]' : 'bg-gray-50 border-gray-200')}`}>
+                      <div className="flex items-center gap-2 font-bold text-sm">
                         <Calendar className={`w-4 h-4 ${turno.penalizacao ? 'text-red-400' : 'text-[#B79148]'}`} />
                         {new Date(turno.data).toLocaleDateString('pt-PT')}
                       </div>
-                      <span className="text-xs font-bold text-[#C3C2C2]">EDR: {edrDia}%</span>
+                      <span className={`text-xs font-bold ${textMuted}`}>EDR: {edrDia}%</span>
                     </div>
-                    
+
                     <div className="p-5 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                       <div>
-                        <p className="text-xs text-[#C3C2C2]">Valor a Receber</p>
+                        <p className={`text-xs ${textMuted}`}>Valor a Receber</p>
                         {turno.penalizacao && (
-                          <p className="text-xs text-[#C3C2C2] line-through">{turno.ganhos.toFixed(2)} €</p>
+                          <p className={`text-xs line-through ${textMuted}`}>{turno.ganhos.toFixed(2)} €</p>
                         )}
                         <p className="text-xl font-black text-[#B79148]">
                           {ganhosFinais.toFixed(2)} €
                         </p>
                       </div>
-                      
+
                       <div>
-                        <p className="text-xs text-[#C3C2C2] flex items-center gap-1"><Package className="w-3.5 h-3.5 text-[#B79148]"/> Entregues / Saída</p>
-                        <p className="text-base font-bold text-white">{turno.totalConcluidos} / {turno.totalPedidos}</p>
-                        <p className="text-[11px] text-[#C3C2C2]">{turno.pacotesNormais} Normais • {turno.pacotesPudo} PUDO</p>
+                        <p className={`text-xs flex items-center gap-1 ${textMuted}`}><Package className="w-3.5 h-3.5 text-[#B79148]"/> Entregues / Saída</p>
+                        <p className="text-base font-bold">{turno.totalConcluidos} / {turno.totalPedidos}</p>
+                        <p className={`text-[11px] ${textMuted}`}>{turno.pacotesNormais} Normais • {turno.pacotesPudo} PUDO</p>
                       </div>
 
                       <div className="flex flex-col gap-1.5">
@@ -245,7 +295,7 @@ export default function Historico() {
                           <p className="text-[11px] text-red-200 mt-0.5">{turno.motivoPenalizacao}</p>
                         </div>
                       ) : (
-                        <div className="text-xs text-emerald-400 font-semibold">
+                        <div className="text-xs text-emerald-500 font-semibold">
                           ✓ Sem penalizações
                         </div>
                       )}
