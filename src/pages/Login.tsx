@@ -16,7 +16,6 @@ export default function Login() {
 
   const [modoLogin, setModoLogin] = useState(true);
   const [nome, setNome] = useState('');
-  const [codigoFrota, setCodigoFrota] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [erro, setErro] = useState('');
@@ -25,6 +24,7 @@ export default function Login() {
   const [enviandoReset, setEnviandoReset] = useState(false);
 
   const ADMIN_EMAILS = ['welcomescenery@gmail.com', 'fllab.oficial@gmail.com'];
+  const FROTA_FIXA = 'LIS WS';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,11 +52,11 @@ export default function Login() {
         const dadosPerfil: Record<string, any> = {
           email: emailLimpo,
           role: ehAdmin ? 'admin' : 'motorista',
+          codigoFrota: FROTA_FIXA,
           ultimoAcesso: new Date().toISOString()
         };
         if (!modoLogin) {
           dadosPerfil.nome = nome.trim().toUpperCase();
-          dadosPerfil.codigoFrota = codigoFrota.trim().toUpperCase() || 'LIS WS';
         }
         await setDoc(doc(db, 'motoristas', userCredential.user.uid), dadosPerfil, { merge: true });
       }
@@ -77,20 +77,33 @@ export default function Login() {
   const handleEsqueciSenha = async () => {
     setErro('');
     setSucessoMsg('');
-    if (!email.trim()) {
+    const emailLimpo = email.trim();
+
+    if (!emailLimpo) {
       setErro('Insira o seu email no campo acima e clique novamente em "Esqueci a palavra-passe".');
       return;
     }
 
     setEnviandoReset(true);
     try {
-      await sendPasswordResetEmail(auth, email.trim());
+      await sendPasswordResetEmail(auth, emailLimpo, {
+        url: window.location.origin,
+        handleCodeInApp: false
+      });
       setSucessoMsg(
-        `Enviámos um link de redefinição de palavra-passe para ${email.trim()}. Verifique também a pasta de Spam.`
+        `Link enviado para ${emailLimpo}. Verifique a Caixa de Entrada e a pasta Spam/Lixo Eletrónico.`
       );
     } catch (error: any) {
-      console.error(error);
-      setErro('Não foi possível enviar o email de recuperação. Verifique se o endereço está correto.');
+      console.error('Erro reset password:', error.code, error.message);
+      if (error.code === 'auth/user-not-found') {
+        setErro('Este email ainda não tem conta registada. Clique em "Não tem conta? Registe-se aqui".');
+      } else if (error.code === 'auth/invalid-email') {
+        setErro('O formato do email inserido não é válido.');
+      } else if (error.code === 'auth/unauthorized-continue-uri') {
+        setErro('Domínio não autorizado no Firebase. Adicione o link da Vercel em Domínios Autorizados.');
+      } else {
+        setErro(`Erro ao enviar link (${error.code || 'verifique a ligação'}).`);
+      }
     } finally {
       setEnviandoReset(false);
     }
@@ -152,7 +165,7 @@ export default function Login() {
             Welcome Scenery
           </h2>
           <p className={`mt-1.5 text-center text-sm ${textMuted}`}>
-            {modoLogin ? 'Aceda à sua conta de operação' : 'Registe-se para começar a conduzir'}
+            {modoLogin ? 'Aceda à sua conta de operação' : `Registo Exclusivo Frota ${FROTA_FIXA}`}
           </p>
         </div>
 
@@ -160,38 +173,26 @@ export default function Login() {
           <div className={`py-8 px-5 shadow-2xl sm:rounded-2xl sm:px-10 border ${bgCard}`}>
             <form className="space-y-5" onSubmit={handleSubmit}>
               {!modoLogin && (
-                <>
-                  <div>
+                <div>
+                  <div className="flex items-center justify-between">
                     <label className={`block text-xs font-bold uppercase tracking-wider ${textMuted}`}>
                       Nome e Sobrenome
                     </label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        required
-                        value={nome}
-                        onChange={(e) => setNome(e.target.value)}
-                        className={`appearance-none block w-full px-3 py-2.5 border rounded-lg shadow-sm focus:outline-none uppercase text-sm ${inputStyle}`}
-                        placeholder="Ex: JOÃO SILVA"
-                      />
-                    </div>
+                    <span className="text-[10px] font-black bg-[#B79148]/20 text-[#B79148] border border-[#B79148]/40 px-2 py-0.5 rounded">
+                      FROTA {FROTA_FIXA}
+                    </span>
                   </div>
-
-                  <div>
-                    <label className={`block text-xs font-bold uppercase tracking-wider ${textMuted}`}>
-                      Código Paack / Frota (Opcional)
-                    </label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        value={codigoFrota}
-                        onChange={(e) => setCodigoFrota(e.target.value)}
-                        className={`appearance-none block w-full px-3 py-2.5 border rounded-lg shadow-sm focus:outline-none uppercase text-sm ${inputStyle}`}
-                        placeholder="Ex: LIS WS M"
-                      />
-                    </div>
+                  <div className="mt-1">
+                    <input
+                      type="text"
+                      required
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      className={`appearance-none block w-full px-3 py-2.5 border rounded-lg shadow-sm focus:outline-none uppercase text-sm ${inputStyle}`}
+                      placeholder="Ex: JOÃO SILVA"
+                    />
                   </div>
-                </>
+                </div>
               )}
 
               <div>
